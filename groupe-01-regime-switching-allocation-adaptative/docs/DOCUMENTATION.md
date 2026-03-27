@@ -1,4 +1,3 @@
-```markdown
 # Documentation Technique : Stratégie Regime Switching (QuantConnect)
 
 Ce document détaille l'architecture logicielle, les algorithmes de Machine Learning implémentés et la logique de trading de la stratégie `RegimeSwitchingExcellent`.
@@ -22,6 +21,7 @@ Implémentation de l'algorithme K-Means en utilisant l'algorithme de Lloyd.
   * `n_clusters` : Nombre de régimes à détecter (3 : Bull, Neutral, Bear).
   * `n_iter` : Nombre d'itérations maximales pour la convergence.
   * `n_init` : Nombre de fois où l'algorithme est exécuté avec des centroïdes initiaux différents pour éviter les minimums locaux.
+ 
 * **Méthodes Principales** :
   * `fit(self, X)` : Entraîne le modèle sur la matrice de caractéristiques `X`. Calcule la distance euclidienne entre les points et les centroïdes, réassigne les étiquettes et met à jour les centroïdes jusqu'à convergence ou au bout de `n_iter`. Conserve la meilleure exécution basée sur l'inertie (somme des distances au carré).
   * `predict(self, X)` : Assigne chaque nouvelle observation au centroïde le plus proche.
@@ -30,10 +30,14 @@ Implémentation de l'algorithme K-Means en utilisant l'algorithme de Lloyd.
 Implémentation d'un Modèle de Markov Caché (HMM) à émissions gaussiennes. Ce modèle suppose que le marché évolue selon des états cachés, des régimes et que les observations (rendements, volatilité) suivent une distribution normale spécifique à chaque état.
 
 * **Initialisation** : `__init__(self, n_states=3, n_iter=60, tol=1e-4)`
+
 * **Méthodes et Algorithmes Sous-jacents** :
   * `_init_params(self, X)` : Initialise les probabilités initiales (pi), la matrice de transition (A) en favorisant la persistance des états (0.95 sur la diagonale), ainsi que les moyennes (mu) et variances (sig) par terciles des données triées.
+
   * `_forward` et `_backward` : Implémentation de l'algorithme Forward-Backward. Utilise la fonction `np.logaddexp` pour calculer les probabilités dans l'espace logarithmique. Cela empêche les erreurs d'underflow fréquentes sur de longues séries temporelles.
-  * `fit(self, X)` : Algorithme Espérance-Maximisation, Baum-Welch. Alterne entre l'estimation des probabilités d'état (Étape E) et la mise à jour des paramètres $$ \mu $$, $$ \sigma $$, et des matrices de transition (Étape M) jusqu'à ce que l'amélioration de la log-vraisemblance soit inférieure à la tolérance (`tol`).
+
+  * `fit(self, X)` : Algorithme Espérance-Maximisation, Baum-Welch. Alterne entre l'estimation des probabilités d'état (Étape E) et la mise à jour des paramètres $$\mu$$, $$\sigma$$, et des matrices de transition (Étape M) jusqu'à ce que l'amélioration de la log-vraisemblance soit inférieure à la tolérance (`tol`).
+
   * `predict(self, X)` : Algorithme de Viterbi. Décode la séquence d'états cachés la plus probable compte tenu des nouvelles observations.
 
 ---
@@ -44,6 +48,7 @@ Cette classe gère le cycle de vie de la stratégie dans QuantConnect.
 
 ### 3.1. Gestion du Temps et des Événements (`Initialize`)
 * **Univers d'investissement** : Actions (SPY), Obligations à long terme (TLT), Obligations à moyen terme (IEF), Or (GLD), Matières premières (DJP).
+  
 * **Scheduling** : 
   * `_monthly_rebalance` : Exécuté le premier jour de chaque mois, 30 minutes après l'ouverture.
   * `_daily_crisis_check` : Exécuté tous les jours, 60 minutes après l'ouverture.
@@ -57,8 +62,8 @@ La préparation des données est cruciale pour le ML. La fonction extrait un his
 
 **Normalisation Robuste** :
 Pour éviter que les krachs extrêmes ne faussent les algorithmes, les données subissent un "clipping" basé sur le Median Absolute Deviation.
-$$ MAD = median(|X_i - median(X)|) * 1.4826 $$
-Les valeurs sont bornées à $$ +/- 4 * MAD $$, puis centrées-réduites (Z-Score).
+$$MAD = median(|X_i - median(X)|) * 1.4826$$
+Les valeurs sont bornées à $$+/- 4 * MAD$$, puis centrées-réduites (Z-Score).
 
 ### 3.3. Définition et Étiquetage des Régimes (`_label_states`)
 Le ML non-supervisé retourne des clusters arbitraires (0, 1, 2). La stratégie doit leur donner un sens financier. L'algorithme d'étiquetage procède ainsi :
@@ -74,11 +79,11 @@ Avant chaque rebalancement mensuel, le HMM et le K-Means classifient les 30 dern
 ### 3.5. Exécution et Filet de Sécurité
 
 * **`_monthly_rebalance`** : Liquide le portefeuille et applique les pondérations de la matrice `ALLOC` en fonction du régime détecté. Le régime "Bear" inclut le DJP (Commodities) comme protection contre l'inflation, tandis que le "Bull" est massivement investi en actions (85%).
+
 * **`_daily_crisis_check`** : Mécanisme de coupe-circuit. Si la volatilité annualisée des 5 derniers jours (`vol5`) dépasse 25% (`CRISIS_VOL_THRESHOLD`), le système annule l'allocation actuelle, force le régime en "bear" de manière anticipée et réalloue immédiatement le capital vers les valeurs refuges. Le régime normal reprend lors du rebalancement mensuel si la volatilité redescend sous le seuil.
 
 ---
 
 ## 4. Complexité et Performances
 * **Complexité Spatiale** : Faible. La matrice d'entraînement est limitée à 400 lignes et 4 colonnes.
-* **Complexité Temporelle** : L'entraînement des modèles (K-Means + HMM) prend quelques secondes par mois. La prédiction quotidienne (`predict` Viterbi) est en $$ O(T * K^2) $$ où T est la séquence, 30 jours et K le nombre d'états : 3, soit une exécution quasi instantanée.
-```
+* **Complexité Temporelle** : L'entraînement des modèles (K-Means + HMM) prend quelques secondes par mois. La prédiction quotidienne (`predict` Viterbi) est en  $$O(T * K^2)$$ où T est la séquence, 30 jours et K le nombre d'états : 3, soit une exécution quasi instantanée.
