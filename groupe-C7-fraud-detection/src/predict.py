@@ -3,14 +3,15 @@ import torch
 import torch.nn.functional as F
 import os
 import sys
+import joblib
 from collections import deque
 
 sys.path.append(os.path.dirname(os.path.abspath(__file__)))
-from models import FraudAutoencoder, predict_autoencoder
+from models import FraudAutoencoder, FraudGNN, build_graph, predict_autoencoder
 
-# ============================================================
-# PIPELINE TEMPS RÉEL AVEC SEUILS ADAPTATIFS
-# ============================================================
+MODELS_PATH = os.path.join(os.path.dirname(__file__), "../models/")
+DATA_PATH = os.path.join(os.path.dirname(__file__), "../data/")
+
 class AdaptiveThresholdPipeline:
     def __init__(self, model, initial_threshold, window_size=100):
         self.model = model
@@ -47,56 +48,70 @@ class AdaptiveThresholdPipeline:
         return decision, score
 
 
-def run_streaming(n_transactions=500):
+def load_models():
+    print("📂 Chargement des modèles sauvegardés...")
+    iso_model = joblib.load(MODELS_PATH + "isolation_forest.pkl")
+    print("  ✅ Isolation Forest chargé !")
+
+    ae_model = FraudAutoencoder(input_dim=29)
+    ae_model.load_state_dict(torch.load(MODELS_PATH + "autoencoder.pth"))
+    ae_model.eval()
+    threshold = float(np.load(MODELS_PATH + "ae_threshold.npy")[0])
+    print(f"  ✅ Autoencoder chargé ! (seuil : {threshold:.6f})")
+
+    gnn_model = FraudGNN(input_dim=29)
+    gnn_model.load_state_dict(torch.load(MODELS_PATH + "gnn.pth"))
+    gnn_model.eval()
+    print("  ✅ GNN chargé !")
+
+    return iso_model, ae_model, threshold, gnn_model
+
+
+def run_streaming(n_normal=480, n_fraud=20):
     print("🚀 PIPELINE DE PRÉDICTION EN TEMPS RÉEL")
     print("=" * 60)
 
-    # Charger les données
-    DATA_PATH = os.path.join(os.path.dirname(__file__), "../data/")
     X_test = np.load(DATA_PATH + "X_test.npy")
     y_test = np.load(DATA_PATH + "y_test.npy")
-    X_train_res = np.load(DATA_PATH + "X_train_res.npy")
-    y_train_res = np.load(DATA_PATH + "y_train_res.npy")
 
-    # Charger et entraîner l'autoencoder
-    print("\n🤖 Chargement de l'Autoencoder...")
-    from models import train_autoencoder
-    model = train_autoencoder(X_train_res, y_train_res, epochs=30)
-    model.eval()
+    # Mix fraudes + normales pour démo réaliste
+    fraud_idx = np.where(y_test == 1)[0][:n_fraud]
+    normal_idx = np.where(y_test == 0)[0][:n_normal]
+    mixed_idx = np.concatenate([fraud_idx, normal_idx])
+    np.random.shuffle(mixed_idx)
 
-    # Calculer le seuil initial
-    _, _, threshold = predict_autoencoder(model, X_train_res[y_train_res == 0][:5000])
-    print(f"   Seuil initial : {threshold:.6f}")
+    print(f"📊 Stream : {n_normal} normales + {n_fraud} fraudes = {len(mixed_idx)} transactions")
 
-    # Lancer le streaming
-    pipeline = AdaptiveThresholdPipeline(model, threshold)
+    iso_model, ae_model, threshold, gnn_model = load_models()
+    pipeline = AdaptiveThresholdPipeline(ae_model, threshold)
 
-    print(f"\n📡 Streaming de {n_transactions} transactions...\n")
+    print(f"\n📡 Streaming de {len(mixed_idx)} transactions...\n")
     vrais_positifs = 0
     faux_positifs = 0
     faux_negatifs = 0
 
-    for i in range(n_transactions):
+    for i in mixed_idx:
         decision, score = pipeline.process_transaction(X_test[i])
         true_label = y_test[i]
 
         if decision == "FRAUDE":
             if true_label == 1:
                 vrais_positifs += 1
-                print(f"  ✅ Transaction #{i:4d} | Score: {score:.4f} | FRAUDE DÉTECTÉE")
+                print(f"  ✅ Transaction #{i:4d} | Score: {score:.4f} | FRAUDE DÉTECTÉE !")
             else:
                 faux_positifs += 1
                 print(f"  ❌ Transaction #{i:4d} | Score: {score:.4f} | FAUX POSITIF")
         else:
             if true_label == 1:
                 faux_negatifs += 1
+                print(f"  ⚠️  Transaction #{i:4d} | Score: {score:.4f} | FRAUDE MANQUÉE")
 
     cout_total = (faux_positifs * 10) + (faux_negatifs * 500)
 
     print(f"\n{'='*60}")
-    print(f"  RÉSULTATS STREAMING ({n_transactions} transactions)")
+    print(f"  RÉSULTATS STREAMING ({len(mixed_idx)} transactions)")
     print(f"{'='*60}")
-    print(f"  Fraudes détectées : {vrais_positifs}")
+    print(f"  Fraudes détectées : {vrais_positifs}/{n_fraud}")
     print(f"  Faux positifs     : {faux_positifs}")
     print(f"  Fraudes manquées  : {faux_negatifs}")
     print(f"  Seuil final       : {pipeline.threshold:.6f}")
@@ -104,4 +119,7 @@ def run_streaming(n_transactions=500):
 
 
 if __name__ == "__main__":
-    run_streaming(n_transactions=500)
+    if not os.path.exists(MODELS_PATH + "autoencoder.pth"):
+        print("⚠️  Modèles non trouvés ! Lance d'abord : py src/train.py")
+    else:
+        run_streaming(n_normal=480, n_fraud=20)
