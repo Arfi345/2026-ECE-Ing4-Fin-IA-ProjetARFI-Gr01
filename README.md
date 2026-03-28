@@ -1,10 +1,3 @@
-#Projet IA - Gr01 AYA ASSELI
-VOIR LE README DANS LE DOSSIER : Aya-Asseli-Options_Stratégies-Automatisees
-
-
-
-
-
 # 2026 - ECE - Ing4 - Fin - IA Probabiliste, Theorie des Jeux et Machine Learning - Groupe 01
 
 Projet pedagogique d'exploration des approches d'intelligence artificielle probabiliste, de la theorie des jeux et du machine learning appliques a la finance et au-dela, pour les etudiants de l'ECE Paris.
@@ -1710,3 +1703,6 @@ Pour vous aider dans vos choix, voici les 10 tendances majeures qui dominent le 
 3. **Employabilite** : RAG, Agents, Federated Learning, QuantConnect sont tres demandes en 2025-2026
 4. **Ambition realiste** : Visez le niveau "Bon" minimum, "Excellent" si equipe solide et assistance IA
 5. **Finance vs Non-Finance** : La categorie I offre des alternatives pour les passionnes de jeux, sport ou sante
+
+#Projet IA - Gr01 AYA ASSELI
+VOIR LE README DANS LE DOSSIER : Aya-Asseli-Options_Stratégies-Automatisees
